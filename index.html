@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#fff6eb">
+  <meta name="description" content="小钱截图识日程：结合截图日期和消息中的相对时间，推理出能够加入日历的具体日期。">
+  <title>小钱 · 截图识日程</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <main class="shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow" id="header-date">把相对日期推成日历日期</p>
+        <h1>截图识日程</h1>
+        <p class="intro">不只是读出一句“下周四”，还会结合截图和消息时间，算出真正的日期。</p>
+      </div>
+      <div class="hero-icon" aria-hidden="true">
+        <svg viewBox="0 0 48 48" role="img">
+          <path d="M8 16V9a1 1 0 0 1 1-1h7M32 8h7a1 1 0 0 1 1 1v7M40 32v7a1 1 0 0 1-1 1h-7M16 40H9a1 1 0 0 1-1-1v-7" />
+          <path d="M15 17h18M15 24h18M15 31h11" />
+        </svg>
+      </div>
+    </header>
+
+    <section class="card upload-card" aria-labelledby="upload-title">
+      <button class="drop-zone" id="drop-zone" type="button" aria-label="选择聊天截图">
+        <span class="upload-icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32">
+            <rect x="4" y="7" width="24" height="18" rx="4" />
+            <circle cx="11" cy="13" r="2.2" />
+            <path d="m6 22 7-6 5 4 4-3 4 5M24 4v6M21 7h6" />
+          </svg>
+        </span>
+        <span class="upload-copy">
+          <strong id="upload-label">选择聊天截图</strong>
+          <span>识别在本机完成，图片不会上传</span>
+        </span>
+        <span class="chevron" aria-hidden="true">›</span>
+      </button>
+      <input id="file-input" type="file" accept="image/*" hidden>
+
+      <div class="preview-shell" id="preview-shell" hidden>
+        <img id="image-preview" alt="待识别的聊天截图预览">
+        <button id="clear-image" class="text-button danger" type="button" hidden>移除图片</button>
+      </div>
+
+      <div class="date-row">
+        <label for="screenshot-date">
+          <span>截图日期</span>
+          <small>相对时间推理的锚点</small>
+        </label>
+        <input id="screenshot-date" type="date" required>
+      </div>
+
+      <p class="field-hint">照片没有保存拍摄日期时，请选择你截图的当天。</p>
+
+      <div class="loading-card" id="ocr-state" aria-live="polite" hidden>
+        <div class="loading-heading">
+          <span id="ocr-status-label"></span>
+          <b id="ocr-percent"></b>
+        </div>
+        <div class="meter-track"><span id="ocr-meter"></span></div>
+      </div>
+
+      <div class="message-box" id="message-box" role="status" hidden></div>
+
+      <details class="text-details" id="text-details">
+        <summary>检查识别文字或直接粘贴聊天内容</summary>
+        <label class="sr-only" for="recognized-text">聊天文字</label>
+        <textarea id="recognized-text" rows="9" placeholder="上传截图后会自动填入，也可以在这里粘贴聊天内容……"></textarea>
+        <button class="secondary-button" id="parse-text" type="button">按这段文字重新推理</button>
+      </details>
+
+      <div class="demo-row">
+        <span>没有现成截图？</span>
+        <button class="text-button" id="sample-button" type="button">载入示例</button>
+      </div>
+    </section>
+
+    <section id="empty-state" class="empty-state" aria-label="使用说明">
+      <div class="timeline">
+        <div class="timeline-item">
+          <span>1</span>
+          <div><strong>读取截图</strong><p>识别日期标签和聊天内容</p></div>
+        </div>
+        <div class="timeline-item">
+          <span>2</span>
+          <div><strong>推回消息日期</strong><p>例如“昨天”对应截图前一天</p></div>
+        </div>
+        <div class="timeline-item">
+          <span>3</span>
+          <div><strong>换算成日历日期</strong><p>把“下周四”落到具体年月日</p></div>
+        </div>
+      </div>
+      <p class="privacy-note">截图 OCR 和日期推理均在浏览器内完成。网页只负责加载开源 OCR 模型。</p>
+    </section>
+
+    <section class="card result-card" id="result-section" aria-labelledby="result-heading" hidden>
+      <div class="result-heading">
+        <span class="status-icon" aria-hidden="true">✓</span>
+        <div>
+          <p class="eyebrow">日期已经推出来了</p>
+          <h2 id="result-heading">确定的时间</h2>
+          <p class="result-date" id="result-date"></p>
+          <span class="all-day-badge" id="all-day-badge"></span>
+        </div>
+      </div>
+
+      <div class="reasoning">
+        <h3>我是这样算的</h3>
+        <ol id="results"></ol>
+        <p class="caution" id="caution" hidden></p>
+      </div>
+
+      <div class="event-form">
+        <label>
+          <span>日程标题</span>
+          <input id="event-title" type="text" autocomplete="off">
+        </label>
+        <label>
+          <span>日期</span>
+          <input id="event-date" type="date" required>
+        </label>
+        <label>
+          <span>具体时刻</span>
+          <input id="event-time" type="time" step="300">
+          <small>消息没写时间时保持关闭</small>
+        </label>
+        <label>
+          <span>地点</span>
+          <input id="event-location" type="text" autocomplete="off" placeholder="可选">
+        </label>
+      </div>
+
+      <div class="action-row">
+        <button class="primary-button" id="download-calendar" type="button">
+          <span aria-hidden="true">＋</span> 下载日历文件
+        </button>
+        <button class="icon-button" id="copy-result" type="button" aria-label="复制日程信息">复制</button>
+      </div>
+      <p class="calendar-hint">下载后用 iPhone 打开 `.ics` 文件，即可加入 Apple 日历。</p>
+    </section>
+
+    <footer>
+      <span>小钱 · 截图识日程</span>
+      <span>日期有依据，钟点不臆测</span>
+    </footer>
+  </main>
+</body>
+</html>
